@@ -107,6 +107,7 @@ Class MultiShader Extends TShaderGLSL
 	
 	Global VERTVARS0:String = "/*generic opengl 2.0 shader*/ ~n"+
 	"#ifdef GL_ES ~n precision highp float; ~n#endif ~n"+
+	"#ifdef GL_ES ~n precision mediump float; ~n#endif ~n"+
 	"attribute vec2 aTexcoords0, aTexcoords1;attribute vec3 aVertcoords;attribute vec3 aNormals;attribute vec4 aColors;uniform mat4 pMatrix, vMatrix, mMatrix;"+
 	"/*light*/ uniform float lightType[2];uniform mat4 lightMatrix[2];uniform vec3 lightSpot[2]; /*x=outercutoff,y=innercutoff,z=spot exponent*/ "+
 	"/*color*/ uniform vec4 basecolor; uniform float colorflag, lightflag; "+
@@ -189,6 +190,7 @@ Class MultiShader Extends TShaderGLSL
 	
 	
 	Global FRAGVARS0:String = "#ifdef GL_ES ~nprecision highp float; ~n~n#endif ~n"+
+	"#ifdef GL_ES ~nprecision mediump float; ~n~n#endif ~n"+
 	"varying vec2 texcoord[4]; varying vec4 normal;varying vec4 vertcolor;varying vec4 lightVec, halfVec; /*using z component for light att  ;spotlight coefficient packed into halfvec.w*/"+
 	"varying float fogBlend;varying vec3 nmLight;uniform mat4 mMatrix;"+
 	"/*texture*/ uniform float texflag; uniform sampler2D uTexture[5];uniform vec2 texBlend[5];uniform float texfxNormal[2];"+
@@ -200,13 +202,14 @@ Class MultiShader Extends TShaderGLSL
 	"const vec2 one_zero = vec2(1.0,0.0);const vec4 all_zeros = vec4(0.0,0.0,0.0,0.0);"
 	
 	Global FRAGBLEND:String = "/*blendfunc*/"+
-	"vec4 BlendFunction(const float blend, const vec4 texture, const vec4 finalcolor, const vec4 vertcolorx) {"+
-	"vec4 color = one_zero.yyyy;	"+
-	"if (blend ==1.0) {color.xyz = mix(finalcolor.xyz, texture.xyz, texture.w );color.w = vertcolorx.a;	return color;"+
-	"} else if (blend ==2.0) { color = (vertcolorx * texture * finalcolor); 	return color;"+
-	"} else if(blend==3.0) {	color = (vertcolorx * texture); return finalcolor+color;"+
-	"} else if(blend==4.0) {	color = (vertcolorx * texture); return finalcolor+color;"+
-	"} return (texture);}"
+		"vec4 BlendFunction(const float blend, const vec4 texture, const vec4 finalcolor, const vec4 vertcolorx) {"+
+		"vec4 color = one_zero.yyyy;	"+
+		"if (blend ==1.0) {color.xyz = mix(finalcolor.xyz, texture.xyz, texture.w );color.w = vertcolorx.a;	return color;"+
+		"} else if (blend ==2.0) { color = (vertcolorx * texture * finalcolor); 	return color;"+
+		"} else if(blend==3.0) {	color = ((color * vertcolorx) + (texture * finalcolor)); return color;"+
+		"} else if(blend==4.0) {	color = (vertcolorx * texture); return finalcolor+color;"+
+		"} else if(blend==5.0) {	color = (vertcolorx * texture); return finalcolor*color;"+
+		"} return (texture);}"
 #rem	
 	"vec4 BlendFunction(const float blend, const vec4 texture, const vec4 finalcolor, const vec4 vertcolorx) {"+
 	"vec4 color = one_zero.yyyy;	vec4 mod = (vertcolorx * texture);"+

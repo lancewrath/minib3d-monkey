@@ -1229,6 +1229,304 @@ Public
 		End Select
 	End
 
+
+	Function LoadAnimSeq:Int(mesh:TMesh,f_name$)
+	
+		Local data:DataBuffer = DataBuffer.Load(FixDataPath(f_name))
+
+		If DEBUGMODEL Then Print"..loading B3DBinary:"+FixDataPath(f_name)
+
+		If Not data Or (data And data.Length() <=1)
+			Print "**File not found: "+f_name
+			Return -1
+		Endif	
+	
+		Return ParseB3DAnim(mesh, data)		
+	
+	end
+
+
+	Function ParseB3DAnim:int(mesh:TMesh, data:DataBuffer, override_texflags:Int=-1)		
+		' Header info
+		
+		Local tag:Int
+		Local prev_tag:Int
+		Local new_tag:Int
+		Local vno:Int
+		
+		Local file:BufferReader = BufferReader.Create(data)
+		
+		''read BB3D
+		
+		tag=file.ReadTag()
+		
+		If DEBUGMODEL Then Print "TModel "+PrintTag(tag)
+
+		vno =file.ReadInt() 'tag
+		vno =file.ReadInt() 'size
+
+		vno =file.ReadInt() 'version
+
+		If tag<>BB3D Print  "Invalid b3d file"; Return -1
+		If Int(vno*0.01) >0 Print  "Invalid b3d file version"; Return -1
+		
+		' Locals
+		
+		Local size:Int
+		Local curSize:Int
+		Local node_level:Int=-1
+		Local old_node_level:Int=-1
+		Local node_pos:Int[100]
+	
+
+		
+
+		
+		' node local vars
+		Local n_name$=""
+		Local n_px#=0
+		Local n_py#=0
+		Local n_pz#=0
+		Local n_sx#=0
+		Local n_sy#=0
+		Local n_sz#=0
+		Local n_rx#=0
+		Local n_ry#=0
+		Local n_rz#=0
+		Local n_qw#=0
+		Local n_qx#=0
+		Local n_qy#=0
+		Local n_qz#=0
+		
+
+		
+		' anim local vars
+		Local a_flags:Int
+		Local a_frames:Int
+		Local a_fps:Int
+					
+		' bone local vars
+		Local bo_bone:TBone
+		Local bo_no_bones:Int
+		Local bo_vert_id:Int
+		Local bo_vert_w#
+		
+		' key local vars	
+		Local k_flags:Int
+		Local k_frame:Int
+		Local k_px#
+		Local k_py#
+		Local k_pz#
+		Local k_sx#
+		Local k_sy#
+		Local k_sz#
+		Local k_qw#
+		Local k_qx#
+		Local k_qy#
+		Local k_qz#
+	
+		Local parent_ent:TEntity=Null ' parent_ent - used to keep track of parent entitys within model, separate to parent_ent_ext paramater which is external to model
+		Local root_ent:TEntity=Null
+	
+		Local last_ent:TEntity=Null ' last created entity, used for assigning parent ent in node code
+	
+		Local totaltris:Int=0
+	
+		' Begin chunk (tag) reading
+	
+		Repeat
+	
+			new_tag=file.ReadTag()
+		
+			If NewTag(new_tag)=True
+			
+				prev_tag=tag
+				tag=new_tag
+				
+				file.ReadInt() 'tag
+				size=file.ReadInt() 'size
+				curSize=0
+			endif
+	
+			Select tag
+
+				Case NODE
+	
+					new_tag=file.ReadTag()
+					
+					n_name=B3DReadString(file)
+					n_px=file.ReadFloat()
+					n_py=file.ReadFloat()
+					n_pz=-file.ReadFloat() '*-1
+					n_sx=file.ReadFloat()
+					n_sy=file.ReadFloat()
+					n_sz=file.ReadFloat()
+					n_qw=file.ReadFloat()
+					n_qx=file.ReadFloat()
+					n_qy=file.ReadFloat()
+					n_qz=file.ReadFloat()
+					
+					Local rot:Float[] = Quaternion.QuatToEuler(n_qx,n_qy,-n_qz,n_qw)
+					Local pitch#=rot[0]
+					Local yaw#=rot[1]
+					Local roll#=rot[2]
+					n_rx=-pitch
+					n_ry=yaw
+					n_rz=roll
+	
+					new_tag=file.ReadTag()
+
+					
+				Case ANIM
+				
+					a_flags=file.ReadInt()
+					a_frames=file.ReadInt()
+					a_fps=file.ReadFloat()
+					
+					If a_frames<0 Then a_frames = -a_frames
+					
+					'Print "anim flags:"+a_flags+" frames:"+a_frames+" fps:"+a_fps
+					
+					If mesh<>Null And file.Eof()<>True
+					
+						mesh.anim=1
+
+						local newlen:int = mesh.anim_seqs_first.Length()+1
+						mesh.anim_seqs_first = mesh.anim_seqs_first.Resize(newlen)
+						mesh.anim_seqs_last = mesh.anim_seqs_last.Resize(newlen)
+						mesh.anim_seqs_first[newlen-1]=mesh.anim_seqs_last[newlen-2]+1
+						mesh.anim_seqs_last[newlen-1]=mesh.anim_seqs_last[newlen-2]+a_frames
+					Endif	
+	
+				Case BONE
+				
+					Local ix:Int=0
+					
+					new_tag=file.ReadTag()
+
+					While NewTag(new_tag)<>True And file.Eof()<>True And size<>0
+				
+						bo_vert_id=file.ReadInt()
+						bo_vert_w=file.ReadFloat()
+						
+						new_tag=file.ReadTag()
+							
+					Wend
+					Print "Finding "+n_name
+					bo_bone = TBone(mesh.FindChild(n_name))
+					If bo_bone = Null Then Print "Null Bone"
+
+					bo_bone.keys.oldframes = bo_bone.keys.frames
+					bo_bone.keys.frames=bo_bone.keys.frames+a_frames
+					bo_bone.keys.flags=bo_bone.keys.flags.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.px=bo_bone.keys.px.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.py=bo_bone.keys.py.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.pz=bo_bone.keys.pz.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.sx=bo_bone.keys.sx.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.sy=bo_bone.keys.sy.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.sz=bo_bone.keys.sz.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.qw=bo_bone.keys.qw.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.qx=bo_bone.keys.qx.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.qy=bo_bone.keys.qy.Resize(bo_bone.keys.frames+1)
+					bo_bone.keys.qz=bo_bone.keys.qz.Resize(bo_bone.keys.frames+1)
+					If root_ent=Null Then root_ent=bo_bone
+					If node_level>0 Then bo_bone.AddParent(parent_ent)
+
+					If new_tag<>KEYS
+
+						last_ent=bo_bone
+
+						
+					Endif
+					
+					
+									
+		
+				Case KEYS
+				
+					k_flags=file.ReadInt()
+				
+					new_tag=file.ReadTag()
+	
+					While NewTag(new_tag)<>True And file.Eof()<>True And curSize <= size
+			
+						k_frame=file.ReadInt()
+						k_frame = bo_bone.keys.oldframes+k_frame
+						curSize+=4
+						
+						If(k_flags&1) 'pos
+							k_px=file.ReadFloat()
+							k_py=file.ReadFloat()
+							k_pz=-file.ReadFloat()
+							curSize+=12
+						Endif
+						If(k_flags&2) 'sca
+							k_sx=file.ReadFloat()
+							k_sy=file.ReadFloat()
+							k_sz=file.ReadFloat()
+							curSize+=12
+						Endif
+						If(k_flags&4) 'rot
+							k_qw=-file.ReadFloat()
+							k_qx=file.ReadFloat()
+							k_qy=file.ReadFloat()
+							k_qz=-file.ReadFloat()
+							curSize+=16
+							
+						Endif
+	
+						If bo_bone<>Null And k_frame < bo_bone.keys.frames ' check if bo_bone exists - it won't for non-boned, keyframe anims
+						
+							bo_bone.keys.flags[k_frame]=bo_bone.keys.flags[k_frame]+k_flags
+							If(k_flags&1)
+								bo_bone.keys.px[k_frame]=k_px
+								bo_bone.keys.py[k_frame]=k_py
+								bo_bone.keys.pz[k_frame]=k_pz
+							Endif
+							If(k_flags&2)
+								bo_bone.keys.sx[k_frame]=k_sx
+								bo_bone.keys.sy[k_frame]=k_sy
+								bo_bone.keys.sz[k_frame]=k_sz
+							Endif
+							If(k_flags&4)
+								bo_bone.keys.qw[k_frame]=k_qw
+								bo_bone.keys.qx[k_frame]=k_qx
+								bo_bone.keys.qy[k_frame]=k_qy
+								bo_bone.keys.qz[k_frame]=k_qz
+							Endif
+						
+						Endif
+						
+						new_tag=file.ReadTag()
+							
+					Wend
+					
+					If new_tag<>KEYS
+					
+						If bo_bone<>Null ' check if bo_bone exists - it won't for non-boned, keyframe anims
+							
+
+							last_ent=bo_bone
+
+							
+						Endif
+						
+					Endif
+					
+					
+				Default
+				
+					file.ReadByte()
+	
+			End Select
+		
+		Until file.Eof()
+		
+		
+		Return mesh.anim_seqs_first.Length()
+	
+	End
+
 End 
 
 

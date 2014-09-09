@@ -2213,6 +2213,7 @@ Class TEntity
 			Else
 				''modify bone
 				TBone(ent_c).UpdateMatrix(ent_c.loc_mat)
+				UpdateChildren(ent_c,type)
 			Endif
 			
 			

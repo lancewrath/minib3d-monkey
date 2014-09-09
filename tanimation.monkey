@@ -640,7 +640,7 @@ End
 
 
 Class TAnimationKeys
-
+	Field oldframes:int '<-- this
 	Field frames:Int
 	Field flags:Int[1]
 	Field px:Float[1]
